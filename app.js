@@ -162,7 +162,6 @@ function renderRevealRound(round){
           </div>
         </div>
       </div>
-      <div id="dashboardTarget" class="hidden"></div>
     </section>`;
 
   const root = document.getElementById('roundRoot');
@@ -225,14 +224,37 @@ function renderRevealRound(round){
   buttons.forEach(btn=>btn.addEventListener('click',()=>reveal(btn)));
   document.getElementById('resetBtn').addEventListener('click',()=>renderRevealRound(round));
   document.getElementById('showResultsBtn').addEventListener('click',()=>{
-    const target = document.getElementById('dashboardTarget');
-    target.classList.toggle('hidden');
-    if(!target.dataset.loaded){
-      target.innerHTML = buildRevealDashboard(round, rows, qualifiedSet, leaders, {winner, cutoff, next, gap, avgTop, maxScore, mostWins});
-      target.dataset.loaded = '1';
-    }
+    const dashboardHtml = buildRevealDashboard(round, rows, qualifiedSet, leaders, {winner, cutoff, next, gap, avgTop, maxScore, mostWins});
+    showInfoModal(dashboardHtml, `${round.title} results`);
   });
   updateProgress(); updateLocks();
+}
+
+
+function showInfoModal(contentHtml, title='Details'){
+  const existing = document.getElementById('infoModalRoot');
+  if(existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="info-modal-backdrop" id="infoModalRoot" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="info-modal">
+        <div class="info-modal-head">
+          <div class="info-modal-title">${escapeHtml(title)}</div>
+          <button class="info-modal-close" type="button" aria-label="Close details">×</button>
+        </div>
+        <div class="info-modal-body">${contentHtml}</div>
+      </div>
+    </div>`);
+  const root = document.getElementById('infoModalRoot');
+  const close = () => root.remove();
+  root.querySelector('.info-modal-close').addEventListener('click', close);
+  root.addEventListener('click', (event)=>{ if(event.target === root) close(); });
+  const onKey = (event)=>{
+    if(event.key === 'Escape'){
+      close();
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  document.addEventListener('keydown', onKey);
 }
 
 function buildRevealDashboard(round, rows, qualifiedSet, leaders, stats){
@@ -324,18 +346,59 @@ function computeFinalData(round){
   return {rows,rowByCountry,cardsData,categorySteps,categoryLeaders,animPoints,podiumCount,categoryWins,rankHistory,animationWinner};
 }
 
+
+function getFinalLayoutDims(){
+  const appWidth = Math.max(320, app?.clientWidth || window.innerWidth || 1180);
+  const viewportHeight = Math.max(560, window.innerHeight || 800);
+  const phone = appWidth <= 560;
+  const narrow = appWidth <= 760;
+  const lowHeight = viewportHeight < 820;
+  let rowsPerCol, cardWidth, cardHeight, gapRow, gapCol;
+  if(phone){
+    rowsPerCol = 4;
+    gapCol = 6;
+    gapRow = 6;
+    const usableWidth = Math.max(300, appWidth - 22);
+    cardWidth = Math.floor((usableWidth - gapCol * 3) / 4);
+    cardWidth = Math.max(68, Math.min(112, cardWidth));
+    cardHeight = lowHeight ? 30 : 34;
+  } else if(narrow){
+    rowsPerCol = 4;
+    gapCol = 10;
+    gapRow = 8;
+    const usableWidth = Math.max(420, appWidth - 42);
+    cardWidth = Math.floor((usableWidth - gapCol * 3) / 4);
+    cardWidth = Math.max(92, Math.min(152, cardWidth));
+    cardHeight = lowHeight ? 38 : 44;
+  } else {
+    rowsPerCol = 8;
+    gapCol = lowHeight ? 22 : 28;
+    gapRow = lowHeight ? 8 : 14;
+    const usableWidth = Math.min(850, Math.max(620, appWidth - 90));
+    cardWidth = Math.floor((usableWidth - gapCol) / 2);
+    cardWidth = Math.max(248, Math.min(292, cardWidth));
+    cardHeight = lowHeight ? 46 : 58;
+  }
+  const totalCards = 16;
+  const cols = Math.ceil(totalCards / rowsPerCol);
+  const stageWidth = cols * cardWidth + (cols - 1) * gapCol;
+  const stageHeight = rowsPerCol * cardHeight + (rowsPerCol - 1) * gapRow;
+  return {rowsPerCol, cardWidth, cardHeight, gapRow, gapCol, stageWidth, stageHeight};
+}
+
 function renderFinal(round){
   const data = computeFinalData(round);
-  const cardWidth=292, cardHeight=58, gapRow=14, gapCol=28, rowsPerCol=8;
+  const dims = getFinalLayoutDims();
+  const {cardWidth, cardHeight, gapRow, gapCol, rowsPerCol, stageWidth, stageHeight} = dims;
   app.innerHTML = `<section class="final-wrap">
     <div class="final-card" id="finalRoot">
       <div class="final-title">FINAL</div>
       <div class="head-line"><button class="start-btn" id="finalStart">START</button><div class="category-line" id="categoryLabel"></div></div>
       <div class="final-progress-wrap"><div class="final-progress-fill" id="finalProgress"></div></div>
-      <div class="cards-stage"><div class="cards-inner">
+      <div class="cards-stage"><div class="cards-inner" style="width:${stageWidth}px;height:${stageHeight}px">
         ${data.cardsData.map((card,i)=>{
           const col=Math.floor(i/rowsPerCol); const row=i%rowsPerCol;
-          return `<div class="f-card" data-country="${escapeHtml(card.country)}" data-final="${card.finalScore}" data-stage="${card.stageScore}" data-orig="${card.originalOrder}" style="top:${row*(cardHeight+gapRow)}px;left:${col*(cardWidth+gapCol)}px"><div class="f-left"><span class="f-flag">${splitCountry(card.country).flag}</span><span class="f-code">${escapeHtml(card.code)}</span></div><div class="f-right"><span class="f-inc hidden">+0</span><span class="f-score">0</span></div></div>`
+          return `<div class="f-card" data-country="${escapeHtml(card.country)}" data-final="${card.finalScore}" data-stage="${card.stageScore}" data-orig="${card.originalOrder}" style="width:${cardWidth}px;height:${cardHeight}px;top:${row*(cardHeight+gapRow)}px;left:${col*(cardWidth+gapCol)}px"><div class="f-left"><span class="f-flag">${splitCountry(card.country).flag}</span><span class="f-code">${escapeHtml(card.code)}</span></div><div class="f-right"><span class="f-inc hidden">+0</span><span class="f-score">0</span></div></div>`
         }).join('')}
       </div></div>
       <div class="result-panel" id="resultPanel"><div class="result-head">FINAL RESULT</div><div class="result-main"><div class="winner-card" id="winnerCard"></div><div class="super-card" id="superCard"></div></div></div>
@@ -344,7 +407,7 @@ function renderFinal(round){
     <div class="final-actions"><button class="control-btn primary" id="insightsBtn">INSIGHTS</button><button class="control-btn" id="summaryBtn">SUMMARY TABLE</button><button class="control-btn" id="resetFinalBtn">Reset final</button></div>
     <div id="finalExtra" class="hidden"></div>
   </section>`;
-  initFinalInteraction(round, data, {rowsPerCol,cardWidth,cardHeight,gapRow,gapCol});
+  initFinalInteraction(round, data, dims);
 }
 
 function initFinalInteraction(round, data, dims){
@@ -457,12 +520,10 @@ function initFinalInteraction(round, data, dims){
   startBtn.addEventListener('click',startShow);
   document.getElementById('resetFinalBtn').addEventListener('click',()=>renderFinal(round));
   document.getElementById('insightsBtn').addEventListener('click',()=>{
-    const extra = document.getElementById('finalExtra'); extra.classList.remove('hidden');
-    extra.innerHTML = buildFinalInsights(round, data);
+    showInfoModal(buildFinalInsights(round, data), 'FINAL insights');
   });
   document.getElementById('summaryBtn').addEventListener('click',()=>{
-    const extra = document.getElementById('finalExtra'); extra.classList.remove('hidden');
-    extra.innerHTML = buildFinalSummary(round, data);
+    showInfoModal(buildFinalSummary(round, data), 'FINAL summary table');
   });
 }
 
